@@ -1,0 +1,138 @@
+instrument { name = "GAP.v16", icon="jpg", overlay = true , icon="indicators:MA"}
+
+input_group {"Compra",comprar_color = input {default = "#00FF00", type = input.color}}
+input_group {"Periodo da Micro Tendencia",emaa_per = input {default = 7, type = input.integer}}
+input_group {"Periodo da Macro Tendencia",emab_per = input {default = 44, type = input.integer}}
+input_group {"Venda",vender_color = input {default = "#FF0000", type = input.color}}
+input_group {"UP - UP COLOR", call_color = input { default="#00FF00", type = input.color } }
+input_group {"DOWN - DOWN COLOR", put_color = input { default="#FF0000", type = input.color } }
+
+source = input (1, "front.ind.source", input.string_selection, inputs.titles_overlay)
+
+percentage = input (10, "Forca do GAP", input.double, 0.01, 100, 1.0) / 1000 --definido gap de 1%
+
+
+input_group {
+    "front.ind.dpo.generalline",
+    color = input { default = "#4BFFB5", type = input.color },
+    width = input { default = 1, type = input.line_width}
+}
+
+local sourceSeries = inputs [source]
+
+
+rapidaMA = tma(sourceSeries, emaa_per) --Periodo da Micro Tendencia pelo preo de fechamento usando TMA
+lentaMA= tma(sourceSeries, emab_per) --Periodo da Macro Tendencia
+
+calc = abs(lentaMA + rapidaMA)/2
+
+plot (rapidaMA, "EMA", call_color, 1)
+plot (lentaMA, "EMA", put_color, 1)
+plot (calc, "EMA", "#FFFFFF", 1)
+
+--Anlise feita com 4 velas
+--Verificando tendncia rapida
+if ((rapidaMA[1]>rapidaMA[2]) and (rapidaMA[2]>rapidaMA[3]) and (rapidaMA[3]>rapidaMA[4])) then
+    TRapida = "Alta"
+    else
+        if ((rapidaMA[1]<rapidaMA[2]) and (rapidaMA[2]<rapidaMA[3]) and (rapidaMA[3]<rapidaMA[4])) then
+            TRapida = "Baixa"
+        else
+            TRapida = "Lateral"
+        end
+end
+
+--Verificando tendncia lenta
+if ((lentaMA[1]>lentaMA[2]) and (lentaMA[2]>lentaMA[3]) and (lentaMA[3]>lentaMA[4])) then
+    TLenta = "Alta"
+    else
+        if ((lentaMA[1]<lentaMA[2]) and (lentaMA[2]<lentaMA[3]) and (lentaMA[3]<lentaMA[4])) then
+            TLenta = "Baixa"
+        else
+            TLenta = "Lateral"
+        end
+end
+
+--Verifica se tendencia de ALTA ; Baixa ou Lateral
+if (((TLenta == "Alta") and (TRapida == "Baixa")) or ((TLenta == "Baixa") and (TRapida == "Alta")) or (TRapida == "Lateral")or (TLenta == "Lateral") ) then
+    Tend = "Lateral"
+    else
+        if ((TRapida == "Alta") and (TLenta == "Alta")) then
+            Tend = "Alta"
+            elseif ((TRapida == "Baixa") and (TLenta == "Baixa")) then
+                Tend = "Baixa"
+        end
+end
+
+
+GAPB = (close[1] > open) --gap com preo menor
+GAPA = (close[1] < open) --gap com preo maior
+VELAVERDE = (close[1] > open[1]) --verifica se a ultima vela foi verde
+VELAVERME = (close[1] < open[1]) -- verifica se a ultima vela foi vermelha
+GAPF = ((VELAVERDE and GAPA) or (VELAVERME and GAPB)) --identifica se gap para fora
+GAPD = ((VELAVERDE and GAPB) or (VELAVERME and GAPA)) --identifica se gap para dentro
+GAPPER = (((abs(open - close[1]))/close[1])*1000) > percentage --calcula a forca do gap
+
+--se houve um gap forte segue para tomada de deciso
+if GAPPER then
+    if Tend == "Alta" then
+        if ((VELAVERDE and GAPF) or (VELAVERME and GAPF) or (VELAVERDE and GAPD)) then
+            plot_shape(1, 'Compra', shape_style.arrowup, shape_size.huge, call_color, shape_location.belowbar, 0, "Compra", "#FFFFFF") 
+        end
+    elseif Tend == "Baixa" then
+        if ((VELAVERME and GAPF)or (VELAVERDE and GAPF)or (VELAVERME and GAPD)) then
+            plot_shape(1, 'Venda', shape_style.arrowdown, shape_size.huge, put_color, shape_location.abovebar, 0, "Venda", "#FFFFFF")
+        end
+    elseif Tend == "Lateral" then
+        plot_shape(1, 'Wait', shape_style.cross , shape_size.huge, "#FFFFFF", shape_location.top, 0, "GAP", "#FFFFFF")
+            
+    end
+end
+
+
+
+--No alterar codigo abaixo
+--Suporte e Resistenica
+method_id = input (2, "Type", input.string_selection, { "M5" })
+
+input_group {
+    "Maxima",
+    level_1_color = input { default = "#FF0000", type = input.color },
+    level_1_width = input { default = 2, type = input.line_width }
+}
+
+input_group {
+    "Minima",
+    level_2_color = input { default = "#32CD32", type = input.color },
+    level_2_width = input { default = 2, type = input.line_width }
+}
+
+local function m15(candle)
+
+    c1 = candle.high
+    c2 = candle.low
+end
+
+local methods = { m15 }
+
+timedosuporte = input(3, "TimeFrame S&R", input.string_selection, {"15m","30m","1H"})
+
+if timedosuporte ==1 then
+        resolution = "15m"
+    elseif timedosuporte == 2 then
+        resolution = "30m"
+    elseif timedosuporte == 3 then
+        resolution = "1H"
+end
+sec = security (current_ticker_id, resolution)
+
+if sec then
+   local method = methods [method_id]
+   method (sec)
+
+   plot (c1, "C1",   level_1_color, level_1_width, 0, style.levels, na_mode.continue)
+   plot (c2, "C2",   level_2_color, level_2_width, 0, style.levels, na_mode.continue) 
+
+end
+
+
